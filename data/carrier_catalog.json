@@ -1,0 +1,36 @@
+{
+    "residential": {
+        "Infinity\u00ae Series": {
+            "features": [
+                "Greenspeed\u00ae Intelligence",
+                "Ideal Humidity System\u2122",
+                "Silencer System II\u2122"
+            ],
+            "url": "https://www.carrier.com/us/en/residential/air-conditioners/",
+            "digital_twin_status": "Planned"
+        }
+    },
+    "commercial": {
+        "AquaEdge\u00ae Chillers": {
+            "features": [
+                "Water-cooled",
+                "High efficiency",
+                "Non-ozone depleting"
+            ],
+            "url": "https://www.carrier.com/us/en/commercial/chillers/",
+            "digital_twin_status": "Planned"
+        }
+    },
+    "cold_chain": {
+        "Vector\u2122 Series": {
+            "features": [
+                "All-electric",
+                "Multi-temperature",
+                "E-Drive Technology"
+            ],
+            "url": "https://www.carrier.com/us/en/cold-chain/truck-trailer/trailer/",
+            "digital_twin_status": "Planned"
+        }
+    },
+    "digital_services": {}
+}

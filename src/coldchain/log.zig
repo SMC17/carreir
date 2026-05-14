@@ -352,3 +352,121 @@ test "truncated input rejected" {
     var buf: [ENTRY_SIZE - 1]u8 = .{0} ** (ENTRY_SIZE - 1);
     try testing.expectError(ChainError.Truncated, verifyChain(key, &buf));
 }
+
+// ---------------------------------------------------------------------------
+// Property-based tests (PRNG-seeded; deterministic).
+//
+// Sister to the psychrometric / refrigerant property suites; same pattern
+// stax modeled with sentinel-sbom Unreleased 1000-trial determinism harness.
+//
+// Cold-chain log invariants pinned:
+//   - randomized append-then-verify always passes
+//   - tamper detection: any single-bit flip in any signed prefix or HMAC
+//     causes verifyChain to fail
+//   - HMAC determinism: same key + same prior_hmac + same sample produces
+//     byte-identical Entry
+//   - wrong key always rejects
+// ---------------------------------------------------------------------------
+
+test "property: random N-entry chain (N in [1, 100]) appends + verifies" {
+    var prng = std.Random.DefaultPrng.init(0xC0_2026_0514_BEEF);
+    const rng = prng.random();
+    const trials: u32 = 200;
+    var trial: u32 = 0;
+    while (trial < trials) : (trial += 1) {
+        const n = 1 + rng.uintLessThan(usize, 100);
+        const key = "rng-property-key";
+        var buf = try std.testing.allocator.alloc(u8, n * ENTRY_SIZE);
+        defer std.testing.allocator.free(buf);
+        var prior: [HMAC_SIZE]u8 = .{0} ** HMAC_SIZE;
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            const sample = Sample{
+                .timestamp_us = rng.int(u64),
+                .temperature_c = @as(f32, @floatFromInt(@as(i32, @intCast(rng.uintLessThan(u32, 1200))))) / 10.0 - 50.0,
+                .humidity = rng.float(f32),
+                .accel_x_mg = @intCast(@as(i32, @intCast(rng.uintLessThan(u32, 4001))) - 2000),
+                .accel_y_mg = @intCast(@as(i32, @intCast(rng.uintLessThan(u32, 4001))) - 2000),
+                .accel_z_mg = @intCast(@as(i32, @intCast(rng.uintLessThan(u32, 4001))) - 2000),
+            };
+            const entry = appendOne(key, prior, sample);
+            @memcpy(buf[i * ENTRY_SIZE ..][0..ENTRY_SIZE], std.mem.asBytes(&entry));
+            prior = entry.hmac;
+        }
+        const verified = verifyChain(key, buf) catch |err| {
+            std.debug.print("FAIL @ trial {d}: n={d} verifyChain returned {}\n", .{ trial, n, err });
+            return error.TestUnexpectedResult;
+        };
+        if (verified != n) {
+            std.debug.print("FAIL @ trial {d}: n={d} verifyChain returned {d}\n", .{ trial, n, verified });
+            return error.TestUnexpectedResult;
+        }
+    }
+}
+
+test "property: random bit-flip in any signed-prefix byte is detected" {
+    var prng = std.Random.DefaultPrng.init(0xC0_2026_0514_BEF0);
+    const rng = prng.random();
+    const trials: u32 = 200;
+    var trial: u32 = 0;
+    while (trial < trials) : (trial += 1) {
+        const key = "rng-tamper-key";
+        const n: usize = 5;
+        var buf: [n * ENTRY_SIZE]u8 = undefined;
+        var prior: [HMAC_SIZE]u8 = .{0} ** HMAC_SIZE;
+        var i: usize = 0;
+        while (i < n) : (i += 1) {
+            const sample = Sample{
+                .timestamp_us = @as(u64, @intCast(i)),
+                .temperature_c = 4.0 + rng.float(f32) * 4.0,
+                .humidity = 0.7,
+                .accel_x_mg = 0,
+                .accel_y_mg = 0,
+                .accel_z_mg = 1000,
+            };
+            const entry = appendOne(key, prior, sample);
+            @memcpy(buf[i * ENTRY_SIZE ..][0..ENTRY_SIZE], std.mem.asBytes(&entry));
+            prior = entry.hmac;
+        }
+        // Pick a random byte to flip — anywhere in the buffer.
+        const flip_idx = rng.uintLessThan(usize, buf.len);
+        const flip_bit: u3 = @intCast(rng.uintLessThan(u32, 8));
+        buf[flip_idx] ^= (@as(u8, 1) << flip_bit);
+        // verifyChain must reject — single-bit corruption anywhere breaks
+        // either the HMAC over the prefix or the HMAC chain itself.
+        if (verifyChain(key, &buf)) |verified| {
+            std.debug.print(
+                "FAIL @ trial {d}: flip at byte={d} bit={d} verified={d} (should have rejected)\n",
+                .{ trial, flip_idx, flip_bit, verified },
+            );
+            return error.TestUnexpectedResult;
+        } else |_| {}
+    }
+}
+
+test "property: appendOne is deterministic in (key, prior_hmac, sample)" {
+    var prng = std.Random.DefaultPrng.init(0xC0_2026_0514_BEF1);
+    const rng = prng.random();
+    const trials: u32 = 500;
+    var trial: u32 = 0;
+    while (trial < trials) : (trial += 1) {
+        var key_buf: [16]u8 = undefined;
+        rng.bytes(&key_buf);
+        var prior: [HMAC_SIZE]u8 = undefined;
+        rng.bytes(&prior);
+        const sample = Sample{
+            .timestamp_us = rng.int(u64),
+            .temperature_c = rng.float(f32) * 50.0 - 25.0,
+            .humidity = rng.float(f32),
+            .accel_x_mg = @intCast(@as(i32, @intCast(rng.uintLessThan(u32, 4001))) - 2000),
+            .accel_y_mg = @intCast(@as(i32, @intCast(rng.uintLessThan(u32, 4001))) - 2000),
+            .accel_z_mg = @intCast(@as(i32, @intCast(rng.uintLessThan(u32, 4001))) - 2000),
+        };
+        const a = appendOne(&key_buf, prior, sample);
+        const b = appendOne(&key_buf, prior, sample);
+        if (!std.mem.eql(u8, std.mem.asBytes(&a), std.mem.asBytes(&b))) {
+            std.debug.print("FAIL @ trial {d}: appendOne non-deterministic\n", .{trial});
+            return error.TestUnexpectedResult;
+        }
+    }
+}

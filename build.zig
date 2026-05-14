@@ -54,6 +54,18 @@ pub fn build(b: *std.Build) void {
     const refrigerant_fixtures = b.addTest(.{ .root_module = refrigerant_fixtures_mod });
     test_step.dependOn(&b.addRunArtifact(refrigerant_fixtures).step);
 
+    // --- coldchain hull ---
+    const coldchain_mod = b.createModule(.{
+        .root_source_file = b.path("src/coldchain/log.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const coldchain_tests = b.addTest(.{ .root_module = coldchain_mod });
+    test_step.dependOn(&b.addRunArtifact(coldchain_tests).step);
+
+    // CLI (src/main.zig) defers to follow-up — uses Zig 0.14-era APIs that
+    // need porting to the 0.16 `pub fn main(init: std.process.Init)` shape.
+
     if (experimental) {
         addExperimental(b, target, optimize, test_step);
     }

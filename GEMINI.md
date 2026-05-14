@@ -1,5 +1,11 @@
 # Carrier AI: Sovereign Cognitive Architecture
 
+Read `~/AGENT_HARNESS.md`, `~/AGENT_RESPONSE_LENS.md`,
+`~/HARNESS_AUDIT.md`, `~/HARNESS_MANIFEST.md`, and
+`~/AGENT_OPERATING_DOCTRINE.md` first. This file adds local tactics only; it
+does not override shared proof levels, claim compression, repo coordination, or
+the evidence-first response lens.
+
 ## I. Mission
 To achieve "Theoretical Peak" physical intelligence across Carrier's global fleet (HVAC, Cold Chain) by deploying a **Sovereign Cognitive Architecture** rooted in Zig, Kircher Category Theory, and deterministic hardware-native execution. We are bypassing generic Python middleware to write directly to the territory (SASS/PTX/Embedded ISA) of Carrier's APX and Micro-Link controllers.
 

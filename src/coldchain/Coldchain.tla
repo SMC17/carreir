@@ -78,7 +78,7 @@ WriterAppend(p) ==
     /\ Len(log) < MaxEntries
     /\ p \in Payloads
     /\ LET prior == IF Len(log) = 0 THEN Genesis ELSE log[Len(log)].hmac
-       IN  log' = Sequences!Append(log, Entry(p, prior))
+       IN  log' = log \o << Entry(p, prior) >>
     /\ adversary_log' = adversary_log
 
 \* The adversary copies the writer's log into its working view.

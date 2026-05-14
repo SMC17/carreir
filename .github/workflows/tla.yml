@@ -5,13 +5,11 @@ on:
     branches: [main]
     paths:
       - 'src/coldchain/Coldchain.tla'
-      - 'src/coldchain/SPEC.tla'
       - 'src/coldchain/Coldchain.cfg'
       - '.github/workflows/tla.yml'
   pull_request:
     paths:
       - 'src/coldchain/Coldchain.tla'
-      - 'src/coldchain/SPEC.tla'
       - 'src/coldchain/Coldchain.cfg'
       - '.github/workflows/tla.yml'
 
@@ -43,21 +41,14 @@ jobs:
           test -s ~/.cache/tla2tools/tla2tools.jar
           jar tf ~/.cache/tla2tools/tla2tools.jar | head -1 > /dev/null
 
-      - name: Verify Java + TLC self-check
+      - name: Verify Java + TLC self-check (SANY syntax analysis)
         run: |
           java -version
-          # SANY (syntax analyser) on a known-good spec should produce zero errors.
-          # We use the actual coldchain spec — if SANY fails here, the spec
-          # is syntactically broken and there is no point running TLC.
+          # SANY on the spec must report zero errors before TLC is invoked.
+          # If SANY fails here, the spec is syntactically broken and there
+          # is no point running TLC.
           java -cp ~/.cache/tla2tools/tla2tools.jar tla2sany.SANY \
-            src/coldchain/SPEC.tla
-
-      - name: Rename SPEC.tla to Coldchain.tla for TLC
-        # TLC requires the module name in the file to match the filename.
-        # Our spec declares MODULE Coldchain but is stored as SPEC.tla for
-        # repo navigability. Symlink to match.
-        run: |
-          cp src/coldchain/SPEC.tla src/coldchain/Coldchain.tla
+            src/coldchain/Coldchain.tla
 
       - name: Run TLC model check
         run: |

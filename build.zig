@@ -46,6 +46,14 @@ pub fn build(b: *std.Build) void {
     const refrigerant_tests = b.addTest(.{ .root_module = refrigerant_mod });
     test_step.dependOn(&b.addRunArtifact(refrigerant_tests).step);
 
+    const refrigerant_fixtures_mod = b.createModule(.{
+        .root_source_file = b.path("src/refrigerant/tests.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const refrigerant_fixtures = b.addTest(.{ .root_module = refrigerant_fixtures_mod });
+    test_step.dependOn(&b.addRunArtifact(refrigerant_fixtures).step);
+
     if (experimental) {
         addExperimental(b, target, optimize, test_step);
     }

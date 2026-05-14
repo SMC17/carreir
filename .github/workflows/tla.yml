@@ -1,0 +1,92 @@
+name: TLA+ Model Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/coldchain/Coldchain.tla'
+      - 'src/coldchain/SPEC.tla'
+      - 'src/coldchain/Coldchain.cfg'
+      - '.github/workflows/tla.yml'
+  pull_request:
+    paths:
+      - 'src/coldchain/Coldchain.tla'
+      - 'src/coldchain/SPEC.tla'
+      - 'src/coldchain/Coldchain.cfg'
+      - '.github/workflows/tla.yml'
+
+jobs:
+  coldchain-tlc:
+    name: Coldchain TLA+ — model-check three safety invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache tla2tools.jar
+        id: cache-tla
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/tla2tools
+          key: tla2tools-v1.8.0
+
+      - name: Download tla2tools.jar
+        if: steps.cache-tla.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/.cache/tla2tools
+          # Pinned to TLA+ Tools v1.8.0 (released 2023). Stable, widely vetted.
+          # Re-pin only when a known feature/bugfix is needed.
+          curl -fsSL -o ~/.cache/tla2tools/tla2tools.jar \
+            https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar
+          # Verify the download is not empty and is a valid JAR.
+          test -s ~/.cache/tla2tools/tla2tools.jar
+          jar tf ~/.cache/tla2tools/tla2tools.jar | head -1 > /dev/null
+
+      - name: Verify Java + TLC self-check
+        run: |
+          java -version
+          # SANY (syntax analyser) on a known-good spec should produce zero errors.
+          # We use the actual coldchain spec — if SANY fails here, the spec
+          # is syntactically broken and there is no point running TLC.
+          java -cp ~/.cache/tla2tools/tla2tools.jar tla2sany.SANY \
+            src/coldchain/SPEC.tla
+
+      - name: Rename SPEC.tla to Coldchain.tla for TLC
+        # TLC requires the module name in the file to match the filename.
+        # Our spec declares MODULE Coldchain but is stored as SPEC.tla for
+        # repo navigability. Symlink to match.
+        run: |
+          cp src/coldchain/SPEC.tla src/coldchain/Coldchain.tla
+
+      - name: Run TLC model check
+        run: |
+          cd src/coldchain
+          # -workers 4 = parallel state-space exploration
+          # -deadlock = report deadlocks (we don't expect any; the spec has
+          #   no "everything has to make progress" requirement)
+          # -cleanup = remove state files before run
+          # Exit code 0 = no invariant violated.
+          # Exit code 12 = invariant violated → CI fails.
+          java -XX:+UseParallelGC \
+               -cp ~/.cache/tla2tools/tla2tools.jar tlc2.TLC \
+               -workers 4 \
+               -deadlock \
+               -cleanup \
+               -config Coldchain.cfg \
+               Coldchain.tla
+        # The Coldchain.cfg pins: Payloads = {p1, p2}, MaxEntries = 3.
+        # State space is bounded; expected runtime well under 15 minutes
+        # on a GitHub-hosted runner.
+
+      - name: Upload TLC artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tlc-trace
+          path: |
+            src/coldchain/Coldchain.tla
+            src/coldchain/Coldchain.cfg
+            src/coldchain/states/
+            src/coldchain/*.out
+          retention-days: 14

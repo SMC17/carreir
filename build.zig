@@ -28,6 +28,15 @@ pub fn build(b: *std.Build) void {
     const psychro_tests = b.addTest(.{ .root_module = psychro_mod });
     test_step.dependOn(&b.addRunArtifact(psychro_tests).step);
 
+    // Cross-check fixtures against ASHRAE 2021 reference values.
+    const psychro_fixtures_mod = b.createModule(.{
+        .root_source_file = b.path("src/psychrometric/tests.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const psychro_fixtures = b.addTest(.{ .root_module = psychro_fixtures_mod });
+    test_step.dependOn(&b.addRunArtifact(psychro_fixtures).step);
+
     if (experimental) {
         addExperimental(b, target, optimize, test_step);
     }

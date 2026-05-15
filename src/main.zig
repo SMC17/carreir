@@ -1,91 +1,155 @@
+// carreir CLI — three-hull substrate: psychrometric / refrigerant / coldchain.
+//
+// Usage:
+//   carreir psychro <T_db_c> <T_wb_c>     — moist-air state at standard pressure
+//   carreir refrigerant <name> T=<c>      — saturation pressure for T (Celsius)
+//   carreir refrigerant <name> P=<kPa>    — saturation temperature for P (kPa)
+//   carreir coldchain replay <path>       — verify HMAC chain on a .ccl log
+//
+// Each hull is independently importable; the CLI is a thin shell over the libraries.
+//
+// Zig 0.16 conventions:
+//   `pub fn main` takes `std.process.Init` by value. CLI args come from
+//   `init.minimal.args`; stdio comes from `init.io`. The arena allocator
+//   owns args + scratch buffers for the lifetime of the process.
+
 const std = @import("std");
-const core = @import("carrier_core.zig");
+const psychrometric = @import("psychrometric");
+const refrigerant = @import("refrigerant");
+const coldchain = @import("coldchain");
 
 pub fn main(init: std.process.Init) !void {
-    const allocator = init.arena.allocator();
-    std.debug.print("Initializing Carrier Sovereign Cognitive Node [FLEET SCALE]...\n", .{});
-    std.debug.print("Targeting APX / Micro-Link Architecture.\n", .{});
+    const arena = init.arena.allocator();
+    const args = try init.minimal.args.toSlice(arena);
 
-    const thread_count = 10;
-    var threads: [thread_count]std.Thread = undefined;
+    var out_buf: [4096]u8 = undefined;
+    var out_w = std.Io.File.stdout().writer(init.io, &out_buf);
+    var err_buf: [1024]u8 = undefined;
+    var err_w = std.Io.File.stderr().writer(init.io, &err_buf);
+    const out = &out_w.interface;
+    const err = &err_w.interface;
+    defer out.flush() catch {};
+    defer err.flush() catch {};
 
-    std.debug.print("Scaling Ingest Engine: Spawning {d} threads (10 units/thread)...\n", .{thread_count});
-
-    for (0..thread_count) |i| {
-        threads[i] = try std.Thread.spawn(.{}, simulateBatch, .{ i, allocator });
+    if (args.len < 2) {
+        try printUsage(out);
+        return;
     }
 
-    for (threads) |t| {
-        t.join();
-    }
+    const cmd = args[1];
 
-    std.debug.print("Fleet Simulation Complete. 100 units audited.\n", .{});
-}
-
-fn simulateBatch(batch_id: usize, allocator: std.mem.Allocator) void {
-    for (0..10) |i| {
-        const unit_id = batch_id * 10 + i;
-        simulateUnit(unit_id, allocator);
-    }
-}
-
-fn simulateUnit(id: usize, allocator: std.mem.Allocator) void {
-    const initial_latent_state = core.Hexagram.EntropyMinimizing;
-    const action = initial_latent_state.toAction();
-
-    const current_state = core.PhysicalState{
-        .ambient_temp_c = 35.0,
-        .target_temp_c = -20.0,
-        .compressor_rpm = @intFromFloat(action.compressor_speed * 3000),
-        .refrigerant_pressure_psi = 150.0,
-        .energy_input_watts = action.compressor_speed * 5000.0,
-        .enthalpy_h = 400.0,
-        .entropy_s = 1.5,
-        .config = core.CarrierConfig.default,
-    };
-
-    const researcher = core.ResearchEngine{ .allocator = allocator };
-    const best_cycle = researcher.explore(current_state) catch return;
-
-    if (id % 20 == 0) {
-        std.debug.print("[Unit {d}] Alpha Cycle Discovered (COP: {d:.2})\n", .{ id, best_cycle.avg_cop });
+    if (std.mem.eql(u8, cmd, "psychro")) {
+        try runPsychro(out, err, args);
+    } else if (std.mem.eql(u8, cmd, "refrigerant")) {
+        try runRefrigerant(out, err, args);
+    } else if (std.mem.eql(u8, cmd, "coldchain")) {
+        try runColdchain(init.io, arena, out, err, args);
+    } else if (std.mem.eql(u8, cmd, "--help") or std.mem.eql(u8, cmd, "-h")) {
+        try printUsage(out);
+    } else {
+        try printUsage(err);
+        std.process.exit(2);
     }
 }
 
-test "Causality Invariant Enforcement" {
-    const state = core.PhysicalState{
-        .ambient_temp_c = 30.0,
-        .target_temp_c = 22.0,
-        .compressor_rpm = 1000,
-        .refrigerant_pressure_psi = 100.0,
-        .energy_input_watts = 2000.0,
-        .enthalpy_h = 400.0,
-        .entropy_s = 1.5,
-        .config = core.CarrierConfig.default,
-    };
-    
-    const pressure_violation = core.PhysicalState{
-        .ambient_temp_c = 30.0,
-        .target_temp_c = 22.0,
-        .compressor_rpm = 1000,
-        .refrigerant_pressure_psi = 500.0, // Exceeds 450.0 max
-        .energy_input_watts = 2000.0,
-        .enthalpy_h = 400.0,
-        .entropy_s = 1.5,
-        .config = core.CarrierConfig.default,
+fn printUsage(w: *std.Io.Writer) !void {
+    try w.writeAll(
+        \\carreir — three-hull HVAC / cold-chain substrate
+        \\
+        \\Commands:
+        \\  psychro <T_db_c> <T_wb_c>
+        \\      Compute moist-air state at standard pressure (101.325 kPa).
+        \\      Prints humidity ratio, enthalpy, dewpoint.
+        \\
+        \\  refrigerant <name> T=<celsius>
+        \\      Saturation pressure (kPa) for the given temperature.
+        \\      Supported names: R-134a R-410A R-32 R-1234yf R-744
+        \\
+        \\  refrigerant <name> P=<kPa>
+        \\      Saturation temperature (Celsius) for the given pressure.
+        \\
+        \\  coldchain replay <path>
+        \\      Verify the HMAC chain on an append-only reefer log.
+        \\
+        \\Examples:
+        \\  carreir psychro 30 20
+        \\  carreir refrigerant R-410A T=5
+        \\  carreir coldchain replay /tmp/reefer.ccl
+        \\
+    );
+}
+
+fn runPsychro(out: *std.Io.Writer, err: *std.Io.Writer, args: []const [:0]const u8) !void {
+    if (args.len < 4) {
+        try printUsage(err);
+        std.process.exit(2);
+    }
+    const t_db = try std.fmt.parseFloat(f64, args[2]);
+    const t_wb = try std.fmt.parseFloat(f64, args[3]);
+
+    const w = try psychrometric.humidityRatioFromWetBulb(t_db, t_wb, psychrometric.standard_pressure_kpa);
+    const h = psychrometric.enthalpy(t_db, w);
+    const p_w = psychrometric.partialPressureFromHumidityRatio(w, psychrometric.standard_pressure_kpa);
+    const p_ws = psychrometric.saturationPressureWaterKPa(t_db);
+    const rh = p_w / p_ws;
+    const td = psychrometric.dewpoint(t_db, rh);
+
+    try out.print(
+        \\T_db    = {d:.3} C
+        \\T_wb    = {d:.3} C
+        \\W       = {d:.6} kg/kg dry air
+        \\h       = {d:.3} kJ/kg dry air
+        \\RH      = {d:.3} (fraction)
+        \\T_dew   = {d:.3} C
+        \\
+    , .{ t_db, t_wb, w, h, rh, td });
+}
+
+fn runRefrigerant(out: *std.Io.Writer, err: *std.Io.Writer, args: []const [:0]const u8) !void {
+    if (args.len < 4) {
+        try printUsage(err);
+        std.process.exit(2);
+    }
+    const name = args[2];
+    const fluid = refrigerant.byName(name) orelse {
+        try err.writeAll("unknown refrigerant: ");
+        try err.writeAll(name);
+        try err.writeAll("\nsupported: R-134a R-410A R-32 R-1234yf R-744\n");
+        std.process.exit(2);
     };
 
-    const surge_violation = core.PhysicalState{
-        .ambient_temp_c = 30.0,
-        .target_temp_c = 22.0,
-        .compressor_rpm = 5000, // Exceeds 4500 max
-        .refrigerant_pressure_psi = 100.0,
-        .energy_input_watts = 2000.0,
-        .enthalpy_h = 400.0,
-        .entropy_s = 1.5,
-        .config = core.CarrierConfig.default,
+    const spec = args[3];
+    if (std.mem.startsWith(u8, spec, "T=")) {
+        const t = try std.fmt.parseFloat(f64, spec[2..]);
+        const p = try refrigerant.saturationPressureKPa(fluid, t);
+        try out.print("{s} T={d:.3} C  =>  P_sat = {d:.3} kPa\n", .{ name, t, p });
+    } else if (std.mem.startsWith(u8, spec, "P=")) {
+        const p = try std.fmt.parseFloat(f64, spec[2..]);
+        const t = try refrigerant.saturationTemperatureCelsius(fluid, p);
+        try out.print("{s} P={d:.3} kPa  =>  T_sat = {d:.3} C\n", .{ name, p, t });
+    } else {
+        try printUsage(err);
+        std.process.exit(2);
+    }
+}
+
+fn runColdchain(io: std.Io, arena: std.mem.Allocator, out: *std.Io.Writer, err: *std.Io.Writer, args: []const [:0]const u8) !void {
+    if (args.len < 4 or !std.mem.eql(u8, args[2], "replay")) {
+        try printUsage(err);
+        std.process.exit(2);
+    }
+    const path = args[3];
+
+    // Demo key — real deployments load from secure storage. Zero key is fine
+    // for verifying logs signed with zero key (e.g. the example produced by
+    // examples/coldchain_log_sample.zig).
+    const key = [_]u8{0} ** 32;
+
+    var verified: usize = 0;
+    coldchain.replayFile(io, arena, path, &key, &verified) catch |e| {
+        try err.print("replay FAILED: {s}\n", .{@errorName(e)});
+        std.process.exit(1);
     };
 
-    try std.testing.expectError(core.CausalityError.PressureInvariantViolation, state.checkCausality(pressure_violation));
-    try std.testing.expectError(core.CausalityError.CompressorSurge, state.checkCausality(surge_violation));
+    try out.print("replay OK: {d} entries verified\n", .{verified});
 }

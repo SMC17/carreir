@@ -170,19 +170,36 @@ pub fn replay(
 }
 
 // File-mode replay convenience for the CLI.
+//
+// Takes the Zig 0.16 `std.Io` interface so the read path is cross-platform
+// (Linux, macOS, BSD, Windows, WASI). The older `std.fs.cwd()` API was
+// removed in 0.16 in favor of `std.Io.Dir.cwd()` + an explicit Io vtable.
 pub fn replayFile(
+    io: std.Io,
     allocator: std.mem.Allocator,
     path: []const u8,
     key: []const u8,
     out_count: *usize,
 ) !void {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
-    const stat = try file.stat();
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
+
+    const stat = try file.stat(io);
     if (stat.size > 1 << 30) return error.FileTooLarge;
+
     const bytes = try allocator.alloc(u8, stat.size);
     defer allocator.free(bytes);
-    _ = try file.readAll(bytes);
+
+    var read_buf: [4096]u8 = undefined;
+    var file_reader = file.reader(io, &read_buf);
+    var total: usize = 0;
+    while (total < bytes.len) {
+        const n = try file_reader.interface.readSliceShort(bytes[total..]);
+        if (n == 0) break;
+        total += n;
+    }
+    if (total != bytes.len) return error.ShortRead;
+
     out_count.* = try verifyChain(key, bytes);
 }
 

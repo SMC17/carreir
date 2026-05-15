@@ -7,43 +7,53 @@
 //   carreir coldchain replay <path>       — verify HMAC chain on a .ccl log
 //
 // Each hull is independently importable; the CLI is a thin shell over the libraries.
+//
+// Zig 0.16 conventions:
+//   `pub fn main` takes `std.process.Init` by value. CLI args come from
+//   `init.minimal.args`; stdio comes from `init.io`. The arena allocator
+//   owns args + scratch buffers for the lifetime of the process.
+
 const std = @import("std");
 const psychrometric = @import("psychrometric");
 const refrigerant = @import("refrigerant");
 const coldchain = @import("coldchain");
 
-pub fn main() !void {
-    var dbg = std.heap.DebugAllocator(.{}).init;
-    defer _ = dbg.deinit();
-    const allocator = dbg.allocator();
+pub fn main(init: std.process.Init) !void {
+    const arena = init.arena.allocator();
+    const args = try init.minimal.args.toSlice(arena);
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    var out_buf: [4096]u8 = undefined;
+    var out_w = std.Io.File.stdout().writer(init.io, &out_buf);
+    var err_buf: [1024]u8 = undefined;
+    var err_w = std.Io.File.stderr().writer(init.io, &err_buf);
+    const out = &out_w.interface;
+    const err = &err_w.interface;
+    defer out.flush() catch {};
+    defer err.flush() catch {};
 
     if (args.len < 2) {
-        try printUsage();
+        try printUsage(out);
         return;
     }
 
     const cmd = args[1];
 
     if (std.mem.eql(u8, cmd, "psychro")) {
-        try runPsychro(args);
+        try runPsychro(out, err, args);
     } else if (std.mem.eql(u8, cmd, "refrigerant")) {
-        try runRefrigerant(args);
+        try runRefrigerant(out, err, args);
     } else if (std.mem.eql(u8, cmd, "coldchain")) {
-        try runColdchain(allocator, args);
+        try runColdchain(init.io, arena, out, err, args);
     } else if (std.mem.eql(u8, cmd, "--help") or std.mem.eql(u8, cmd, "-h")) {
-        try printUsage();
+        try printUsage(out);
     } else {
-        try printUsage();
+        try printUsage(err);
         std.process.exit(2);
     }
 }
 
-fn printUsage() !void {
-    const stdout = std.fs.File.stdout();
-    try stdout.writeAll(
+fn printUsage(w: *std.Io.Writer) !void {
+    try w.writeAll(
         \\carreir — three-hull HVAC / cold-chain substrate
         \\
         \\Commands:
@@ -69,9 +79,9 @@ fn printUsage() !void {
     );
 }
 
-fn runPsychro(args: [][:0]const u8) !void {
+fn runPsychro(out: *std.Io.Writer, err: *std.Io.Writer, args: []const [:0]const u8) !void {
     if (args.len < 4) {
-        try printUsage();
+        try printUsage(err);
         std.process.exit(2);
     }
     const t_db = try std.fmt.parseFloat(f64, args[2]);
@@ -84,9 +94,7 @@ fn runPsychro(args: [][:0]const u8) !void {
     const rh = p_w / p_ws;
     const td = psychrometric.dewpoint(t_db, rh);
 
-    const stdout = std.fs.File.stdout();
-    var buf: [256]u8 = undefined;
-    const out = try std.fmt.bufPrint(&buf,
+    try out.print(
         \\T_db    = {d:.3} C
         \\T_wb    = {d:.3} C
         \\W       = {d:.6} kg/kg dry air
@@ -95,46 +103,39 @@ fn runPsychro(args: [][:0]const u8) !void {
         \\T_dew   = {d:.3} C
         \\
     , .{ t_db, t_wb, w, h, rh, td });
-    try stdout.writeAll(out);
 }
 
-fn runRefrigerant(args: [][:0]const u8) !void {
+fn runRefrigerant(out: *std.Io.Writer, err: *std.Io.Writer, args: []const [:0]const u8) !void {
     if (args.len < 4) {
-        try printUsage();
+        try printUsage(err);
         std.process.exit(2);
     }
     const name = args[2];
     const fluid = refrigerant.byName(name) orelse {
-        const stderr = std.fs.File.stderr();
-        try stderr.writeAll("unknown refrigerant: ");
-        try stderr.writeAll(name);
-        try stderr.writeAll("\nsupported: R-134a R-410A R-32 R-1234yf R-744\n");
+        try err.writeAll("unknown refrigerant: ");
+        try err.writeAll(name);
+        try err.writeAll("\nsupported: R-134a R-410A R-32 R-1234yf R-744\n");
         std.process.exit(2);
     };
 
     const spec = args[3];
-    const stdout = std.fs.File.stdout();
-    var buf: [256]u8 = undefined;
-
     if (std.mem.startsWith(u8, spec, "T=")) {
         const t = try std.fmt.parseFloat(f64, spec[2..]);
         const p = try refrigerant.saturationPressureKPa(fluid, t);
-        const out = try std.fmt.bufPrint(&buf, "{s} T={d:.3} C  =>  P_sat = {d:.3} kPa\n", .{ name, t, p });
-        try stdout.writeAll(out);
+        try out.print("{s} T={d:.3} C  =>  P_sat = {d:.3} kPa\n", .{ name, t, p });
     } else if (std.mem.startsWith(u8, spec, "P=")) {
         const p = try std.fmt.parseFloat(f64, spec[2..]);
         const t = try refrigerant.saturationTemperatureCelsius(fluid, p);
-        const out = try std.fmt.bufPrint(&buf, "{s} P={d:.3} kPa  =>  T_sat = {d:.3} C\n", .{ name, p, t });
-        try stdout.writeAll(out);
+        try out.print("{s} P={d:.3} kPa  =>  T_sat = {d:.3} C\n", .{ name, p, t });
     } else {
-        try printUsage();
+        try printUsage(err);
         std.process.exit(2);
     }
 }
 
-fn runColdchain(allocator: std.mem.Allocator, args: [][:0]const u8) !void {
+fn runColdchain(io: std.Io, arena: std.mem.Allocator, out: *std.Io.Writer, err: *std.Io.Writer, args: []const [:0]const u8) !void {
     if (args.len < 4 or !std.mem.eql(u8, args[2], "replay")) {
-        try printUsage();
+        try printUsage(err);
         std.process.exit(2);
     }
     const path = args[3];
@@ -145,16 +146,10 @@ fn runColdchain(allocator: std.mem.Allocator, args: [][:0]const u8) !void {
     const key = [_]u8{0} ** 32;
 
     var verified: usize = 0;
-    coldchain.replayFile(allocator, path, &key, &verified) catch |err| {
-        const stderr = std.fs.File.stderr();
-        var ebuf: [128]u8 = undefined;
-        const msg = try std.fmt.bufPrint(&ebuf, "replay FAILED: {s}\n", .{@errorName(err)});
-        try stderr.writeAll(msg);
+    coldchain.replayFile(io, arena, path, &key, &verified) catch |e| {
+        try err.print("replay FAILED: {s}\n", .{@errorName(e)});
         std.process.exit(1);
     };
 
-    const stdout = std.fs.File.stdout();
-    var buf: [128]u8 = undefined;
-    const out = try std.fmt.bufPrint(&buf, "replay OK: {d} entries verified\n", .{verified});
-    try stdout.writeAll(out);
+    try out.print("replay OK: {d} entries verified\n", .{verified});
 }

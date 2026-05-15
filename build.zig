@@ -63,8 +63,48 @@ pub fn build(b: *std.Build) void {
     const coldchain_tests = b.addTest(.{ .root_module = coldchain_mod });
     test_step.dependOn(&b.addRunArtifact(coldchain_tests).step);
 
-    // CLI (src/main.zig) defers to follow-up — uses Zig 0.14-era APIs that
-    // need porting to the 0.16 `pub fn main(init: std.process.Init)` shape.
+    // --- CLI: `carreir` over all three hulls ---
+    //
+    // src/main.zig uses the Zig 0.16 `pub fn main(init: std.process.Init)`
+    // entry-point shape — args come from init.minimal.args, stdio from
+    // init.io. The three hulls below are wired as named module imports so
+    // the binary can call into them without crossing module boundaries.
+    const cli_psychro = b.createModule(.{
+        .root_source_file = b.path("src/psychrometric/mod.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const cli_refrigerant = b.createModule(.{
+        .root_source_file = b.path("src/refrigerant/mod.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const cli_coldchain = b.createModule(.{
+        .root_source_file = b.path("src/coldchain/log.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const cli_mod = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    cli_mod.addImport("psychrometric", cli_psychro);
+    cli_mod.addImport("refrigerant", cli_refrigerant);
+    cli_mod.addImport("coldchain", cli_coldchain);
+
+    const cli_exe = b.addExecutable(.{
+        .name = "carreir",
+        .root_module = cli_mod,
+    });
+    b.installArtifact(cli_exe);
+
+    const run_cmd = b.addRunArtifact(cli_exe);
+    run_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |run_args| run_cmd.addArgs(run_args);
+    const run_step = b.step("run", "Run the carreir CLI");
+    run_step.dependOn(&run_cmd.step);
 
     if (experimental) {
         addExperimental(b, target, optimize, test_step);

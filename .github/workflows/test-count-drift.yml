@@ -1,0 +1,86 @@
+name: test-count-drift
+
+# Automated enforcement of CONVENTIONS.md C5 (test count is load-bearing —
+# verify it). Catches drift between the committed current_test_count: N
+# field (in STATUS.md or README.md) and the live `zig build test --summary all`
+# output. Surfaced by the 2026-05-22 day-zero deployment of
+# ~/agent-fleet/spec/drift-check which found 3 net-new drift findings
+# (mast 20 → 49, carreir 41-residue, edge-ledger 108 → 121).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test-count-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Extract claimed test count
+        id: claimed
+        run: |
+          # Look for `current_test_count: N` in STATUS.md or README.md.
+          # Convention codified at ~/CONVENTIONS.md C5 + ~/agent-fleet/audit/calibration/CORPUS_PART_5.md #156.
+          CLAIMED=""
+          for f in STATUS.md README.md; do
+            if [[ -f "$f" ]]; then
+              found=$(grep -oE 'current_test_count:[[:space:]]*[0-9]+' "$f" 2>/dev/null | head -1 | grep -oE '[0-9]+$' || true)
+              if [[ -n "$found" ]]; then
+                CLAIMED="$found"
+                break
+              fi
+            fi
+          done
+          if [[ -z "$CLAIMED" ]]; then
+            echo "ERROR: no \`current_test_count: N\` field found in STATUS.md or README.md."
+            echo
+            echo "Convention: every stax Zig repo declares its current test count for"
+            echo "drift detection via a machine-readable field. Add a line like:"
+            echo
+            echo "    current_test_count: 42  # per zig build test --summary all"
+            echo
+            echo "to STATUS.md (preferred) or README.md."
+            exit 1
+          fi
+          echo "claimed=$CLAIMED" >> $GITHUB_OUTPUT
+          echo "Claimed test count: $CLAIMED"
+
+      - name: Run tests + extract actual count
+        id: actual
+        run: |
+          OUTPUT=$(zig build test --summary all 2>&1 || true)
+          echo "$OUTPUT"
+          ACTUAL_LINE=$(echo "$OUTPUT" | grep -oE '[0-9]+/[0-9]+ tests passed' | head -1)
+          if [[ -z "$ACTUAL_LINE" ]]; then
+            echo "ERROR: zig build test did not produce a \`N/N tests passed\` line."
+            echo "Either the build failed or the test runner output format changed."
+            exit 1
+          fi
+          ACTUAL=$(echo "$ACTUAL_LINE" | grep -oE '^[0-9]+')
+          echo "actual=$ACTUAL" >> $GITHUB_OUTPUT
+          echo "Actual test count: $ACTUAL"
+
+      - name: Compare claimed vs actual
+        run: |
+          CLAIMED="${{ steps.claimed.outputs.claimed }}"
+          ACTUAL="${{ steps.actual.outputs.actual }}"
+          if [[ "$CLAIMED" != "$ACTUAL" ]]; then
+            echo "::error::TEST-COUNT DRIFT: claimed=$CLAIMED, actual=$ACTUAL"
+            echo
+            echo "Per ~/CONVENTIONS.md C5 + CORPUS_PART_5.md #156:"
+            echo "  - Update current_test_count in STATUS.md (or README.md) to $ACTUAL"
+            echo "  - Add a CHANGELOG.md entry recording the drift catch + new count"
+            echo "  - If this is an under-claim (substrate grew), follow the carreir 41→53 + edge-ledger 38→108→121 pattern"
+            echo "  - If this is an over-claim (tests were removed), explain the removal in the CHANGELOG"
+            exit 1
+          fi
+          echo "OK: test count matches ($ACTUAL/$ACTUAL)."

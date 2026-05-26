@@ -63,6 +63,15 @@ pub fn build(b: *std.Build) void {
     const coldchain_tests = b.addTest(.{ .root_module = coldchain_mod });
     test_step.dependOn(&b.addRunArtifact(coldchain_tests).step);
 
+    // --- chiller hull ---
+    const chiller_mod = b.createModule(.{
+        .root_source_file = b.path("src/chiller/mod.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const chiller_tests = b.addTest(.{ .root_module = chiller_mod });
+    test_step.dependOn(&b.addRunArtifact(chiller_tests).step);
+
     // --- CLI: `carreir` over all three hulls ---
     //
     // src/main.zig uses the Zig 0.16 `pub fn main(init: std.process.Init)`
@@ -84,6 +93,11 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const cli_chiller = b.createModule(.{
+        .root_source_file = b.path("src/chiller/mod.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
 
     const cli_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -93,6 +107,7 @@ pub fn build(b: *std.Build) void {
     cli_mod.addImport("psychrometric", cli_psychro);
     cli_mod.addImport("refrigerant", cli_refrigerant);
     cli_mod.addImport("coldchain", cli_coldchain);
+    cli_mod.addImport("chiller", cli_chiller);
 
     const cli_exe = b.addExecutable(.{
         .name = "carreir",
@@ -105,6 +120,22 @@ pub fn build(b: *std.Build) void {
     if (b.args) |run_args| run_cmd.addArgs(run_args);
     const run_step = b.step("run", "Run the carreir CLI");
     run_step.dependOn(&run_cmd.step);
+
+    // --- Chiller Benchmark ---
+    const bench_mod = b.createModule(.{
+        .root_source_file = b.path("src/chiller/bench.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    bench_mod.addImport("chiller", chiller_mod);
+
+    const bench_exe = b.addExecutable(.{
+        .name = "carreir_bench",
+        .root_module = bench_mod,
+    });
+    const run_bench_cmd = b.addRunArtifact(bench_exe);
+    const bench_step = b.step("bench", "Run ChillerCycle benchmarks");
+    bench_step.dependOn(&run_bench_cmd.step);
 
     if (experimental) {
         addExperimental(b, target, optimize, test_step);

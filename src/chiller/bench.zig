@@ -15,15 +15,15 @@ const safe_states = blk: {
             .condenser = .{ .temperature_c = 40.0 + offset, .pressure_kpa = 1500.0, .enthalpy_kj_kg = 150.0, .quality = 0.5 },
             .expansion_valve = .{ .temperature_c = 40.0 + offset, .pressure_kpa = 1500.0, .enthalpy_kj_kg = 100.0, .quality = -0.1 },
         };
-        // The magic: static invariant checks execute at compile time!
-        state.verifyShaoYong(2000.0);
+        // Comptime safety invariant — compile error on any violation.
+        state.verifySafety(2000.0);
     }
     break :blk states;
 };
 
 pub fn main(init: std.process.Init) !void {
     _ = init;
-    std.debug.print("Initializing ChillerCycle High-Frequency Benchmark (Shao-Yong Static Invariants)\n", .{});
+    std.debug.print("ChillerCycle benchmark — comptime safety invariants\n", .{});
 
     const ITERATIONS: usize = 10_000_000;
     var current_state: chiller.ChillerCycle = safe_states[0];

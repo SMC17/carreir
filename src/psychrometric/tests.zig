@@ -156,8 +156,7 @@ test "round-trip: W -> p_w -> W" {
 // ---------------------------------------------------------------------------
 // Property-based tests (PRNG-seeded; deterministic).
 //
-// Pattern adapted from sentinel-sbom's randomized determinism harness:
-// fixed seed so a failing trial is reproducible; explicit invariant per
+// Fixed seed so a failing trial is reproducible; explicit invariant per
 // trial; counts and seed printed if any trial fails.
 // ---------------------------------------------------------------------------
 

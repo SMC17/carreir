@@ -1,11 +1,9 @@
 name: test-count-drift
 
-# Automated enforcement of CONVENTIONS.md C5 (test count is load-bearing —
-# verify it). Catches drift between the committed current_test_count: N
-# field (in STATUS.md or README.md) and the live `zig build test --summary all`
-# output. Surfaced by the 2026-05-22 day-zero deployment of
-# ~/agent-fleet/spec/drift-check which found 3 net-new drift findings
-# (mast 20 → 49, carreir 41-residue, edge-ledger 108 → 121).
+# Catches drift between the committed `current_test_count: N` field
+# (in STATUS.md or README.md) and the live `zig build test --summary all`
+# output. The test count is load-bearing in this repo's STATUS — drift
+# means the doc lies about how much substrate exists.
 
 on:
   push:
@@ -29,7 +27,6 @@ jobs:
         id: claimed
         run: |
           # Look for `current_test_count: N` in STATUS.md or README.md.
-          # Convention codified at ~/CONVENTIONS.md C5 + ~/agent-fleet/audit/calibration/CORPUS_PART_5.md #156.
           CLAIMED=""
           for f in STATUS.md README.md; do
             if [[ -f "$f" ]]; then
@@ -76,11 +73,8 @@ jobs:
           if [[ "$CLAIMED" != "$ACTUAL" ]]; then
             echo "::error::TEST-COUNT DRIFT: claimed=$CLAIMED, actual=$ACTUAL"
             echo
-            echo "Per ~/CONVENTIONS.md C5 + CORPUS_PART_5.md #156:"
             echo "  - Update current_test_count in STATUS.md (or README.md) to $ACTUAL"
             echo "  - Add a CHANGELOG.md entry recording the drift catch + new count"
-            echo "  - If this is an under-claim (substrate grew), follow the carreir 41→53 + edge-ledger 38→108→121 pattern"
-            echo "  - If this is an over-claim (tests were removed), explain the removal in the CHANGELOG"
             exit 1
           fi
           echo "OK: test count matches ($ACTUAL/$ACTUAL)."

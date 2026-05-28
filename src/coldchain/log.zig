@@ -373,8 +373,8 @@ test "truncated input rejected" {
 // ---------------------------------------------------------------------------
 // Property-based tests (PRNG-seeded; deterministic).
 //
-// Sister to the psychrometric / refrigerant property suites; same pattern
-// stax modeled with sentinel-sbom Unreleased 1000-trial determinism harness.
+// Sister to the psychrometric / refrigerant property suites — same
+// randomised-trial pattern reused across all three hulls.
 //
 // Cold-chain log invariants pinned:
 //   - randomized append-then-verify always passes
@@ -385,7 +385,7 @@ test "truncated input rejected" {
 //   - wrong key always rejects
 // ---------------------------------------------------------------------------
 
-test "property: random N-entry chain (N in [1, 100]) appends + verifies" {
+test "property: random N-entry chain (N in [1, 100]) appends and verifies" {
     var prng = std.Random.DefaultPrng.init(0xC0_2026_0514_BEEF);
     const rng = prng.random();
     const trials: u32 = 200;

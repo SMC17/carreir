@@ -151,8 +151,7 @@ test "byName accepts canonical and common forms" {
 // ---------------------------------------------------------------------------
 // Property-based tests (PRNG-seeded; deterministic).
 //
-// Pattern matches sentinel-sbom's randomized determinism harness and
-// the psychrometric property suite. Invariants we pin:
+// Same pattern as the psychrometric property suite. Invariants we pin:
 //
 //   - P-T round-trip: P(t) inverted via T(p) returns ~t.
 //   - Saturation pressure strictly increasing in T (sub-critical band).

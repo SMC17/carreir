@@ -1,13 +1,9 @@
 .{
     .name = .carreir,
-    .version = "0.0.0",
+    .version = "0.1.0",
     .fingerprint = 0xe2964774d04ffca4,
     .minimum_zig_version = "0.16.0",
-    .dependencies = .{
-        .cobs = .{
-            .path = "../zig-cobs",
-        },
-    },
+    .dependencies = .{},
     .paths = .{
         "build.zig",
         "build.zig.zon",

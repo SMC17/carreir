@@ -1,5 +1,13 @@
 # carreir
 
+> Physical-intelligence substrate for HVAC + cold-chain in Zig. HMAC-SHA256 chained cold-chain log with TLA+ formal spec model-checked by CI.
+
+[![CI](https://github.com/SMC17/carreir/actions/workflows/ci.yml/badge.svg)](https://github.com/SMC17/carreir/actions)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](LICENSE)
+[![Zig: 0.16](https://img.shields.io/badge/Zig-0.16-orange.svg)](https://ziglang.org/)
+[![Tests: 54/54](https://img.shields.io/badge/tests-54%2F54-success.svg)](#tests)
+[![Formal](https://img.shields.io/badge/TLA%2B-model--checked-purple.svg)](#)
+
 A Zig physical-intelligence substrate for HVAC and cold-chain research.
 Deterministic kernels for psychrometric calculations, refrigerant
 saturation tables, and tamper-evident cold-chain logging.
@@ -10,6 +18,37 @@ saturation tables, and tamper-evident cold-chain logging.
 > cold-chain logging today — but it is not a replacement for
 > EnergyPlus, TRNSYS, NIST REFPROP, or a certified compliance system.
 > See [STATUS.md](STATUS.md) for proof levels per module.
+
+## What ships
+
+- `psychrometric/` — ASHRAE 2021 Ch.1 moist-air primitives (22 unit tests)
+- `refrigerant/` — NIST-published saturation P-T for R-134a / R-410A / R-32 / R-1234yf / R-744 (21 unit tests)
+- `coldchain/` — HMAC-SHA256 append-only reefer log with TLA+ formal spec model-checked in CI (10 unit tests + 200-500 trial property tests)
+- `chiller/` — comptime safety invariants for vapor-compression cycles (1 unit test)
+
+## What does NOT ship yet
+
+- Not cross-validated against EnergyPlus / TRNSYS / OpenStudio
+- Not differential-tested against NIST REFPROP as a library
+- No production deployment, no soak time, no incident history
+- No FDA/HACCP/EU-GDP certification (the log is compatible-shaped, not certified)
+- No BMS/SCADA gateway, no service surface
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A[Physical system] --> B[psychrometric<br/>ASHRAE moist-air]
+    A --> C[refrigerant<br/>NIST P-T tables]
+    A --> D[chiller<br/>vapor-compression]
+    B --> E[coldchain<br/>HMAC-SHA256 audit log]
+    C --> E
+    D --> E
+    E --> F[TLA+ spec<br/>model-checked]
+
+    style E fill:#fce7f3,stroke:#db2777
+    style F fill:#dcfce7,stroke:#16a34a
+```
 
 ## What it is
 
@@ -107,6 +146,20 @@ that touches the spec.
 - First-principles thermodynamics — no vendor SCADA coupling.
 - Pre-1.0 versioning; v1.0 only when both (a) Zig itself hits 1.0 and
   (b) a real production deployment exists.
+
+## Companion lanes
+
+The physical-substrate trio (Quant Mercantilism made physical):
+
+- **[steam](https://github.com/SMC17/steam)** — NYISO energy market research engine. Bronze→silver→gold→graph + district-thermal modeling.
+- **[oceanman](https://github.com/SMC17/oceanman)** — submarine-cable knowledge base + analysis methodology. 693 cables, H3 spatial index.
+
+## Non-claims
+
+- Not a substitute for EnergyPlus / TRNSYS / OpenStudio / NIST REFPROP as a library.
+- Not a certified compliance system.
+- Not a SCADA adapter or BMS gateway.
+- The `v1.0.0` git tag predates the Zig-1.0 + production-deployment gate; treat as pre-1.0 substrate per [STATUS.md](STATUS.md).
 
 ## License
 

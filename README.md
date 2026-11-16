@@ -147,13 +147,6 @@ that touches the spec.
 - Pre-1.0 versioning; v1.0 only when both (a) Zig itself hits 1.0 and
   (b) a real production deployment exists.
 
-## Companion lanes
-
-The physical-substrate trio (Quant Mercantilism made physical):
-
-- **[steam](https://github.com/SMC17/steam)** — NYISO energy market research engine. Bronze→silver→gold→graph + district-thermal modeling.
-- **[oceanman](https://github.com/SMC17/oceanman)** — submarine-cable knowledge base + analysis methodology. 693 cables, H3 spatial index.
-
 ## Non-claims
 
 - Not a substitute for EnergyPlus / TRNSYS / OpenStudio / NIST REFPROP as a library.

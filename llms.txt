@@ -1,0 +1,16 @@
+# carreir (`SMC17/carreir`)
+
+> Physical-intelligence substrate for HVAC and cold-chain in Zig 0.16 with TLA+ model-checked HMAC-SHA256 audit logs (AGPL-3.0).
+
+## Key Links
+- **Repository**: https://github.com/SMC17/carreir
+- **Related (`zig-substrate`)**: https://github.com/SMC17/zinging
+- **Author / Org**: https://github.com/SMC17
+
+## Modules & Key Files
+- [README](README.md) & [Status](STATUS.md)
+- [Build](build.zig) & [Source](src)
+  - `psychrometric/` — ASHRAE 2021 Ch.1 moist-air primitives
+  - `refrigerant/` — NIST saturation P-T tables (R-134a, R-410A, R-32, R-1234yf, R-744)
+  - `coldchain/` — HMAC-SHA256 append-only reefer log with TLA+ formal spec
+  - `chiller/` — comptime safety invariants for vapor-compression cycles

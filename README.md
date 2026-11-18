@@ -1,5 +1,7 @@
 # carreir
 
+**[Status](STATUS.md) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Issues](https://github.com/SMC17/carreir/issues) · [Public roadmap](https://github.com/users/SMC17/projects/16)**
+
 > Physical-intelligence substrate for HVAC + cold-chain in Zig. HMAC-SHA256 chained cold-chain log with TLA+ formal spec model-checked by CI.
 
 [![CI](https://github.com/SMC17/carreir/actions/workflows/ci.yml/badge.svg)](https://github.com/SMC17/carreir/actions)
